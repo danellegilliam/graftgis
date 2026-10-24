@@ -1,0 +1,54 @@
+---
+- name: Configure EC2 Instance Locally
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: Update OS
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+
+    - name: Check if a reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Reboot the server if needed
+      ansible.builtin.reboot:
+        msg: "Rebooting machine by Ansible after package updates"
+        connect_timeout: 5
+        reboot_timeout: 300
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+      when: reboot_required.stat.exists
+
+    - name: Create data directory
+      ansible.builtin.file:
+        path: /data
+        state: directory
+        mode: '0755'
+        owner: ec2-user
+        group: ec2-user
+    
+    - name: Create a filesystem on the target device
+      community.general.filesystem:
+        fstype: xfs
+        dev: /dev/nvme1n1
+
+    - name: Ensure target mount directory exists
+      ansible.builtin.file:
+        path: /data
+        state: directory
+        mode: '0755'
+        owner: ec2-user
+        group: ec2-user
+
+    - name: Mount the volume and update /etc/fstab
+      ansible.posix.mount:
+        path: /data
+        src: /dev/nvme1n1
+        fstype: xfs
+        opts: "defaults,nofail"
+        state: mounted
