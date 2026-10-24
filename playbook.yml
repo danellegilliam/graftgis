@@ -52,3 +52,11 @@
         fstype: xfs
         opts: "defaults,nofail"
         state: mounted
+    
+    - name: Change ownership of the mounted directory
+      ansible.builtin.file:
+        path: /data
+        owner: ec2-user
+        group: ecw-user
+        mode: '0755'
+        recurse: yes
