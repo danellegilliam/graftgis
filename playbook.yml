@@ -1,14 +1,19 @@
 ---
-- name: Configure EC2 Instance Locally
+- name: Configure GraftGIS Instance Locally
   hosts: localhost
   connection: local
   become: true
 
   tasks:
-    - name: Update OS
-      ansible.builtin.dnf:
-        name: "*"
-        state: latest
+    - name: Run apt update and upgrade all packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Remove unneeded dependencies (apt autoremove)
+      ansible.builtin.apt:
+        autoremove: true
 
     - name: Check if a reboot is required
       ansible.builtin.stat:
@@ -23,40 +28,146 @@
         pre_reboot_delay: 0
         post_reboot_delay: 30
       when: reboot_required.stat.exists
-
-    - name: Create data directory
+    - name: Ensure target mount point directory exists
       ansible.builtin.file:
         path: /data
         state: directory
         mode: '0755'
-        owner: ec2-user
-        group: ec2-user
-    
-    - name: Create a filesystem on the target device
-      community.general.filesystem:
-        fstype: xfs
-        dev: /dev/nvme1n1
 
-    - name: Ensure target mount directory exists
+    - name: Ensure prerequisite tools are installed
+      ansible.builtin.apt:
+        name:
+          - software-properties-common
+          - curl
+          - git
+          - unzip
+          - acl
+          - util-linux
+          - tmux
+          - ca-certificates
+          - gnupg
+          - python3-venv
+          - python3-pip
+          - postgresql-client
+          - mysql-client
+        state: present
+        update_cache: true
+
+    - name: Add Ondrej Sury PHP PPA
+      ansible.builtin.apt_repository:
+        repo: "ppa:ondrej/php"
+        state: present
+        update_cache: true
+
+    - name: Add NodeSource GPG key
+      ansible.builtin.get_url:
+        url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+        dest: /etc/apt/keyrings/nodesource.asc
+        mode: "0644"
+
+    - name: Add NodeSource Node.js repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_22.x nodistro main"
+        state: present
+        update_cache: true
+
+    - name: Install Nginx, PHP 8.4, Node.js, and MariaDB
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+          - nodejs
+          - mariadb-server
+          - php8.4-fpm
+          - php8.4-cli
+          - php8.4-mysql
+          - php8.4-mbstring
+          - php8.4-xml
+          - php8.4-curl
+          - php8.4-zip
+          - php8.4-gd
+          - php8.4-intl
+          - php8.4-bcmath
+        state: present
+
+    - name: Download Composer installer
+      ansible.builtin.get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer-setup.php
+        mode: "0644"
+        force: false
+
+    - name: Run Composer installer
+      ansible.builtin.command:
+        cmd: php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+        creates: /usr/local/bin/composer
+
+    - name: Clean up Composer installer
       ansible.builtin.file:
-        path: /data
+        path: /tmp/composer-setup.php
+        state: absent
+
+    - name: Ensure MariaDB service is running and enabled
+      ansible.builtin.systemd:
+        name: mariadb
+        state: started
+        enabled: true
+
+    - name: Bootstrap application database and user
+      ansible.builtin.shell: |
+        mysql -u root <<EOF
+        CREATE DATABASE IF NOT EXISTS graft CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        CREATE USER IF NOT EXISTS 'graft_admin'@'127.0.0.1' IDENTIFIED BY 'h2Hfti_zQg78uCic';
+        GRANT ALL PRIVILEGES ON graft.* TO 'graft_admin'@'127.0.0.1';
+        FLUSH PRIVILEGES;
+        EOF
+      changed_when: false
+
+    - name: Create deploy system user
+      ansible.builtin.user:
+        name: "deploy"
+        shell: /bin/bash
+        groups: www-data
+        append: true
+        create_home: true
+
+    - name: Create required folders on mounted storage
+      ansible.builtin.file:
+        path: "{{ item }}"
         state: directory
-        mode: '0755'
-        owner: ec2-user
-        group: ec2-user
+        owner: "deploy"
+        group: www-data
+        mode: "0775"
+      loop:
+        - "/srv/graft/logs"
+        - "/srv/graft/logs/fastapi"
+        - "/srv/graft/storage"
+        - "/srv/graft/bootstrap/cache"
 
-    - name: Mount the volume and update /etc/fstab
-      ansible.posix.mount:
-        path: /data
-        src: /dev/nvme1n1
-        fstype: xfs
-        opts: "defaults,nofail"
-        state: mounted
-    
-    - name: Change ownership of the mounted directory
-      ansible.builtin.file:
-        path: /data
-        owner: ec2-user
-        group: ecw-user
-        mode: '0755'
-        recurse: yes
+    - name: Enforce POSIX ACLs across storage and cache
+      ansible.posix.acl:
+        path: "{{ item.0 }}"
+        entity: "{{ item.1 }}"
+        etype: user
+        permissions: rwX
+        state: present
+        default: "{{ item.2 }}"
+      loop:
+        - ["/srv/graft/storage", "www-data", false]
+        - ["/srv/graft/storage", "deploy", false]
+        - ["/srv/graft/storage", "www-data", true]
+        - ["/srv/graft/storage", "deploy", true]
+        - ["/srv/graft/bootstrap/cache", "www-data", false]
+        - ["/srv/graft/bootstrap/cache", "deploy", false]
+        - ["/srv/graft/bootstrap/cache", "www-data", true]
+        - ["/srv/graft/bootstrap/cache", "deploy", true]
+
+    - name: Ensure Nginx and PHP-FPM are enabled and started
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - nginx
+        - php8.4-fpm
