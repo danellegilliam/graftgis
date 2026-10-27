@@ -5,6 +5,10 @@
   become: true
 
   tasks:
+    - name: Clean up broken PPA sources before any apt update runs
+      ansible.builtin.shell: "rm -f /etc/apt/sources.list.d/*ondrej* /etc/apt/sources.list.d/*php*"
+      changed_when: false
+
     - name: Run apt update and upgrade all packages
       ansible.builtin.apt:
         update_cache: true
@@ -28,12 +32,10 @@
         pre_reboot_delay: 0
         post_reboot_delay: 30
       when: reboot_required.stat.exists
-    - name: Ensure target mount point directory exists
-      ansible.builtin.file:
-        path: /data
-        state: directory
-        mode: '0755'
 
+    # -------------------------------------------------------------------------
+    # Prerequisites & Repositories
+    # -------------------------------------------------------------------------
     - name: Ensure prerequisite tools are installed
       ansible.builtin.apt:
         name:
@@ -49,21 +51,22 @@
           - python3-venv
           - python3-pip
           - postgresql-client
-          - mysql-client
+          - mariadb-client
         state: present
         update_cache: true
 
-    - name: Add Ondrej Sury PHP PPA
-      ansible.builtin.apt_repository:
-        repo: "ppa:ondrej/php"
-        state: present
-        update_cache: true
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
 
     - name: Add NodeSource GPG key
       ansible.builtin.get_url:
         url: https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
         dest: /etc/apt/keyrings/nodesource.asc
         mode: "0644"
+        force: false
 
     - name: Add NodeSource Node.js repository
       ansible.builtin.apt_repository:
@@ -71,7 +74,10 @@
         state: present
         update_cache: true
 
-    - name: Install Nginx, PHP 8.4, Node.js, and MariaDB
+    # -------------------------------------------------------------------------
+    # System Packages & Runtimes
+    # -------------------------------------------------------------------------
+    - name: Install Nginx, PHP 8.5, Node.js, and MariaDB
       ansible.builtin.apt:
         name:
           - nginx
@@ -79,16 +85,16 @@
           - python3-certbot-nginx
           - nodejs
           - mariadb-server
-          - php8.4-fpm
-          - php8.4-cli
-          - php8.4-mysql
-          - php8.4-mbstring
-          - php8.4-xml
-          - php8.4-curl
-          - php8.4-zip
-          - php8.4-gd
-          - php8.4-intl
-          - php8.4-bcmath
+          - php8.5-fpm
+          - php8.5-cli
+          - php8.5-mysql
+          - php8.5-mbstring
+          - php8.5-xml
+          - php8.5-curl
+          - php8.5-zip
+          - php8.5-gd
+          - php8.5-intl
+          - php8.5-bcmath
         state: present
 
     - name: Download Composer installer
@@ -108,6 +114,9 @@
         path: /tmp/composer-setup.php
         state: absent
 
+    # -------------------------------------------------------------------------
+    # Database Initialization (Local MariaDB)
+    # -------------------------------------------------------------------------
     - name: Ensure MariaDB service is running and enabled
       ansible.builtin.systemd:
         name: mariadb
@@ -124,6 +133,9 @@
         EOF
       changed_when: false
 
+    # -------------------------------------------------------------------------
+    # App User, Storage Paths & Permissions
+    # -------------------------------------------------------------------------
     - name: Create deploy system user
       ansible.builtin.user:
         name: "deploy"
@@ -140,6 +152,7 @@
         group: www-data
         mode: "0775"
       loop:
+        - "/srv/graft"
         - "/srv/graft/logs"
         - "/srv/graft/logs/fastapi"
         - "/srv/graft/storage"
@@ -170,4 +183,4 @@
         enabled: true
       loop:
         - nginx
-        - php8.4-fpm
+        - php8.5-fpm
