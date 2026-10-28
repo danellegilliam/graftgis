@@ -358,7 +358,7 @@
         group: "{{ app_group }}"
         mode: "0600"
         content: |
-          GIS_DATABASE_URL="postgresql://{{ postgres_user }}:{{ postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
+          GIS_DATABASE_URL="postgresql://{{ postgres_user }}:{{  postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
 
     - name: Render FastAPI .env
       ansible.builtin.copy:
@@ -368,7 +368,7 @@
         mode: "0640"
         content: |
           APP_ENV=production
-          GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{ postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
+          GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{  postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
           SOURCES_SYNC_TOKEN={{ sync_token }}
           LARAVEL_BASE_URL={{ app_url }}
 
@@ -450,15 +450,15 @@
     # -------------------------------------------------------------------------
     # 6. Service Management & Verification
     # -------------------------------------------------------------------------
-    - name: Link and install systemd service units
-      ansible.builtin.copy:
-        src: "{{ app_dir }}/scripts/server/systemd/{{ item }}"
-        dest: "/etc/systemd/system/{{ item }}"
-        remote_src: true
+    - name: Place systemd templates
+      ansible.builtin.template:
+        src: templates/{{ item }}.j2
+        dest: /etc/systemd/system/{{ item }}
         mode: "0644"
+      become: true
       loop:
-        - groundtruth-fastapi.service
-        - groundtruth-queue.service
+        - graft-fastapi.service
+        - graft-queue.service
 
     - name: Reload systemd daemon
       ansible.builtin.systemd:
@@ -470,8 +470,8 @@
         state: started
         enabled: true
       loop:
-        - groundtruth-fastapi.service
-        - groundtruth-queue.service
+        - graft-fastapi.service
+        - graft-queue.service
 
     - name: Verify FastAPI health endpoint
       ansible.builtin.uri:
