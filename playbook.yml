@@ -195,6 +195,7 @@
         version: "main"
         accept_hostkey: true
         key_file: /home/ubuntu/.ssh/id_ed25519
+        force: yes
 
     - name: Ensure runtime storage and log directories exist
       ansible.builtin.file:
