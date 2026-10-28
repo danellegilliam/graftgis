@@ -1,0 +1,28 @@
+[Unit]
+Description=GraftGIS FastAPI (private data service)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ app_group }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}/services/fastapi
+# FastAPI reads services/fastapi/.env (and the repo-root .env) itself; no EnvironmentFile= is
+needed.
+Environment=APP_ENV=production
+# GCP Secret Manager only. SECRETS_BACKEND must be set here: FastAPI does not read it
+from .env.
+#Environment=SECRETS_BACKEND=gcp
+#Environment=GCP_PROJECT_ID=<project>
+#Environment=GOOGLE_APPLICATION_CREDENTIALS=/etc/groundtruth/gcp-sa.json
+# run_worker.sh execs uvicorn and also copies stderr (startup crashes included) to
+# logs/fastapi/fastapi-console.log for /system-logs; the app log is logs/fastapi/fastapi.log.
+# www-data must be able to write /srv/groundtruth/logs/fastapi (rotate both files with
+logrotate).
+Environment=FASTAPI_LOAD_DOTENV=0
+ExecStart={{ app_dir }}/services/fastapi/run_worker.sh --host 127.0.0.1 --port 8000 --
+workers 2
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
