@@ -70,7 +70,7 @@
 
     - name: Add NodeSource Node.js repository
       ansible.builtin.apt_repository:
-        repo: "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_22.x nodistro main"
+        repo: "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_{{ node_version }}.x nodistro main"
         state: present
         update_cache: true
 
@@ -85,16 +85,16 @@
           - python3-certbot-nginx
           - nodejs
           - mariadb-server
-          - php8.5-fpm
-          - php8.5-cli
-          - php8.5-mysql
-          - php8.5-mbstring
-          - php8.5-xml
-          - php8.5-curl
-          - php8.5-zip
-          - php8.5-gd
-          - php8.5-intl
-          - php8.5-bcmath
+          - php{{ php_version }}-fpm
+          - php{{ php_version }}-cli
+          - php{{ php_version }}-mysql
+          - php{{ php_version }}-mbstring
+          - php{{ php_version }}-xml
+          - php{{ php_version }}-curl
+          - php{{ php_version }}-zip
+          - php{{ php_version }}-gd
+          - php{{ php_version }}-intl
+          - php{{ php_version }}-bcmath
         state: present
 
     - name: Download Composer installer
@@ -127,8 +127,8 @@
       ansible.builtin.shell: |
         mysql -u root <<EOF
         CREATE DATABASE IF NOT EXISTS graft CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        CREATE USER IF NOT EXISTS 'graft_admin'@'127.0.0.1' IDENTIFIED BY 'h2Hfti_zQg78uCic';
-        GRANT ALL PRIVILEGES ON graft.* TO 'graft_admin'@'127.0.0.1';
+        CREATE USER IF NOT EXISTS '{{ graft_admin }}'@'{{ msyql_endpoint }}' IDENTIFIED BY '{{ mysql_pass }}';
+        GRANT ALL PRIVILEGES ON graft.* TO '{{ graft_admin }}'@'{{ msyql_endpoint }}';
         FLUSH PRIVILEGES;
         EOF
       changed_when: false
@@ -138,9 +138,9 @@
     # -------------------------------------------------------------------------
     - name: Create deploy system user
       ansible.builtin.user:
-        name: "deploy"
+        name: "{{ app_user }}"
         shell: /bin/bash
-        groups: www-data
+        groups: "{{ app_group }}"
         append: true
         create_home: true
 
@@ -148,15 +148,15 @@
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
-        owner: "deploy"
-        group: www-data
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
         mode: "0775"
       loop:
-        - "/srv/graft"
-        - "/srv/graft/logs"
-        - "/srv/graft/logs/fastapi"
-        - "/srv/graft/storage"
-        - "/srv/graft/bootstrap/cache"
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/logs"
+        - "{{ app_dir }}/logs/fastapi"
+        - "{{ app_dir }}/storage"
+        - "{{ app_dir }}/bootstrap/cache"
 
     - name: Enforce POSIX ACLs across storage and cache
       ansible.posix.acl:
@@ -167,14 +167,14 @@
         state: present
         default: "{{ item.2 }}"
       loop:
-        - ["/srv/graft/storage", "www-data", false]
-        - ["/srv/graft/storage", "deploy", false]
-        - ["/srv/graft/storage", "www-data", true]
-        - ["/srv/graft/storage", "deploy", true]
-        - ["/srv/graft/bootstrap/cache", "www-data", false]
-        - ["/srv/graft/bootstrap/cache", "deploy", false]
-        - ["/srv/graft/bootstrap/cache", "www-data", true]
-        - ["/srv/graft/bootstrap/cache", "deploy", true]
+        - ["{{ app_dir }}/storage", "{{ app_group }}", false]
+        - ["{{ app_dir }}/storage", "{{ app_user }}", false]
+        - ["{{ app_dir }}/storage", "{{ app_group }}", true]
+        - ["{{ app_dir }}/storage", "{{ app_user }}", true]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_group }}", false]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_user }}", false]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_group }}", true]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_user }}", true]
 
     - name: Ensure Nginx and PHP-FPM are enabled and started
       ansible.builtin.systemd:
@@ -183,4 +183,213 @@
         enabled: true
       loop:
         - nginx
-        - php8.5-fpm
+        - php{{ php_version }}-fpm
+
+    # -------------------------------------------------------------------------
+    # 1. Repository Checkout & Directory Structure
+    # -------------------------------------------------------------------------
+    - name: Clone GraftGIS repository
+      ansible.builtin.git:
+        repo: "git@github.com:Fossphorus2016/ground-truth.git"
+        dest: "{{ app_dir }}"
+        version: "main"
+        accept_hostkey: true
+      become: true
+      become_user: "{{ app_user }}"
+
+    - name: Ensure runtime storage and log directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0775"
+      loop:
+        - "{{ app_dir }}/logs/fastapi"
+        - "{{ app_dir }}/storage/framework/sessions"
+        - "{{ app_dir }}/storage/framework/views"
+        - "{{ app_dir }}/storage/framework/cache"
+        - "{{ app_dir }}/bootstrap/cache"
+
+    - name: Set persistent ACLs on storage and cache
+      ansible.posix.acl:
+        path: "{{ item.0 }}"
+        entity: "{{ item.1 }}"
+        etype: user
+        permissions: rwX
+        state: present
+        default: "{{ item.2 }}"
+      loop:
+        - ["{{ app_dir }}/storage", "{{ app_group }}", false]
+        - ["{{ app_dir }}/storage", "{{ app_user }}", false]
+        - ["{{ app_dir }}/storage", "{{ app_group }}", true]
+        - ["{{ app_dir }}/storage", "{{ app_user }}", true]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_group }}", false]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_user }}", false]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_group }}", true]
+        - ["{{ app_dir }}/bootstrap/cache", "{{ app_user }}", true]
+
+    # -------------------------------------------------------------------------
+    # 2. Python Virtual Environments Setup
+    # -------------------------------------------------------------------------
+    - name: Run 01-setup.sh for GIS loader environment
+      ansible.builtin.command:
+        cmd: "bash scripts/server/01-setup.sh"
+        chdir: "{{ app_dir }}"
+        creates: "{{ app_dir }}/.venv-loader/bin/activate"
+      become: true
+      become_user: "{{ app_user }}"
+
+    - name: Set up FastAPI virtual environment
+      ansible.builtin.command:
+        cmd: "python3 -m venv .venv"
+        chdir: "{{ app_dir }}/services/fastapi"
+        creates: "{{ app_dir }}/services/fastapi/.venv/bin/activate"
+      become: true
+      become_user: "{{ app_user }}"
+
+    - name: Install FastAPI Python requirements
+      ansible.builtin.pip:
+        requirements: "{{ app_dir }}/services/fastapi/requirements.txt"
+        virtualenv: "{{ app_dir }}/services/fastapi/.venv"
+      become: true
+      become_user: "{{ app_user }}"
+
+    # -------------------------------------------------------------------------
+    # 3. Environment Secret Generation & Configuration
+    # -------------------------------------------------------------------------
+    - name: Check if sync token already exists
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/.sync_token"
+      register: sync_token_file
+
+    - name: Generate internal sync token if missing
+      ansible.builtin.shell: "python3 -c 'import secrets; print(secrets.token_urlsafe(32))' > {{ app_dir }}/.sync_token"
+      when: not sync_token_file.stat.exists
+
+    - name: Read sync token
+      ansible.builtin.slurp:
+        src: "{{ app_dir }}/.sync_token"
+      register: raw_sync_token
+
+    - name: Set sync_token fact
+      ansible.builtin.set_fact:
+        sync_token: "{{ raw_sync_token['content'] | b64decode | trim }}"
+
+    - name: Render scripts/server/gt.env
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/scripts/server/gt.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0600"
+        content: |
+          GIS_DATABASE_URL="postgresql://{{ postgres_user }}:{{ posgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
+
+    - name: Render FastAPI .env
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/services/fastapi/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0640"
+        content: |
+          APP_ENV=production
+          GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{ posgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
+          SOURCES_SYNC_TOKEN={{ sync_token }}
+          LARAVEL_BASE_URL={{ app_url }}
+
+    - name: Render Laravel .env
+      ansible.builtin.copy:
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0640"
+        content: |
+          APP_NAME=GroundTruth
+          APP_ENV=production
+          APP_KEY=
+          APP_DEBUG=false
+          APP_URL={{ app_url }}
+          DB_CONNECTION=mysql
+          DB_HOST={{ msyql_endpoint }}
+          DB_PORT=3306
+          DB_DATABASE={{ msyql_db_name }}
+          DB_USERNAME={{ mysql_user }}
+          DB_PASSWORD={{ mysql_pass }}
+          FASTAPI_BASE_URL=http://{{ msyql_endpoint }}:8000
+          SOURCES_SYNC_TOKEN={{ sync_token }}
+    
+    # -------------------------------------------------------------------------
+    # 4. Dependency Build & Application Key Generation
+    # -------------------------------------------------------------------------
+    - name: Install Composer production dependencies
+      ansible.builtin.shell: "composer install --no-dev --optimize-autoloader"
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+
+    - name: Generate Laravel application key if empty
+      ansible.builtin.shell: "php artisan key:generate --force"
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+
+    - name: Install NPM dependencies and build frontend assets
+      ansible.builtin.shell: "npm ci && npm run build"
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+
+    # -------------------------------------------------------------------------
+    # 5. Database Schema Migrations
+    # -------------------------------------------------------------------------
+    - name: Run Alembic PostGIS schema migrations against RDS
+      ansible.builtin.shell: |
+        set -a; . ../scripts/server/gt.env; set +a
+        ../.venv-loader/bin/python -m alembic -c alembic.ini upgrade head
+      args:
+        chdir: "{{ app_dir }}/gis"
+      become_user: "{{ app_user }}"
+
+    - name: Run Laravel database migrations against local MariaDB
+      ansible.builtin.shell: |
+        php artisan migrate --force
+        php artisan db:seed --class=PermissionSeeder --force
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+
+    # -------------------------------------------------------------------------
+    # 6. Service Management & Verification
+    # -------------------------------------------------------------------------
+    - name: Link and install systemd service units
+      ansible.builtin.copy:
+        src: "{{ app_dir }}/scripts/server/systemd/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        remote_src: true
+        mode: "0644"
+      loop:
+        - groundtruth-fastapi.service
+        - groundtruth-queue.service
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start systemd services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - groundtruth-fastapi.service
+        - groundtruth-queue.service
+
+    - name: Verify FastAPI health endpoint
+      ansible.builtin.uri:
+        url: "http://{{ msyql_endpoint }}:8000/health"
+        status_code: 200
+        return_content: true
+      register: health_check
+      retries: 5
+      delay: 3
+      until: health_check.status == 200
