@@ -194,6 +194,7 @@
         dest: "{{ app_dir }}"
         version: "main"
         accept_hostkey: true
+        key_file: /home/ubuntu/.ssh/id_ed25519
       become: true
       become_user: "{{ app_user }}"
 
