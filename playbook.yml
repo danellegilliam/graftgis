@@ -158,6 +158,26 @@
         - "{{ app_dir }}/storage"
         - "{{ app_dir }}/bootstrap/cache"
 
+    - name: Ensure .ssh directory exists for deploy user
+      ansible.builtin.file:
+        path: /home/{{ app_user }}/.ssh
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0700"
+      become: true
+      become_user: "{{ app_user }}"
+
+    - name: Copy deploy private key to deploy user
+      ansible.builtin.copy:
+        dest: "/home/{{ app_user }}/.ssh/id_ed25519"
+        content: "{{ ssh_private_key }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0600"
+      become: true
+      become_user: "{{ app_user }}"
+
     - name: Enforce POSIX ACLs across storage and cache
       ansible.posix.acl:
         path: "{{ item.0 }}"
