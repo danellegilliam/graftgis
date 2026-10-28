@@ -1,0 +1,14 @@
+[Unit]
+Description=GraftGis queue worker
+After=network-online.target
+
+[Service]
+User={{ app_group }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}
+ExecStart=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
