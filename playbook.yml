@@ -127,8 +127,8 @@
       ansible.builtin.shell: |
         mysql -u root <<EOF
         CREATE DATABASE IF NOT EXISTS graft CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        CREATE USER IF NOT EXISTS '{{ graft_admin }}'@'{{ msyql_endpoint }}' IDENTIFIED BY '{{ mysql_pass }}';
-        GRANT ALL PRIVILEGES ON graft.* TO '{{ graft_admin }}'@'{{ msyql_endpoint }}';
+        CREATE USER IF NOT EXISTS '{{ mysql_user }}'@'{{ msyql_endpoint }}' IDENTIFIED BY '{{ mysql_pass }}';
+        GRANT ALL PRIVILEGES ON graft.* TO '{{ mysql_user }}'@'{{ msyql_endpoint }}';
         FLUSH PRIVILEGES;
         EOF
       changed_when: false
