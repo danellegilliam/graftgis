@@ -24,14 +24,10 @@
         path: /var/run/reboot-required
       register: reboot_required
 
-    - name: Reboot the server if needed
-      ansible.builtin.reboot:
-        msg: "Rebooting machine by Ansible after package updates"
-        connect_timeout: 5
-        reboot_timeout: 300
-        pre_reboot_delay: 0
-        post_reboot_delay: 30
+    - name: Reboot the server if needed (local connection safe)
+      ansible.builtin.shell: "systemd-run --on-active=2 /sbin/shutdown -r now 'Ansible local provisioning reboot'"
       when: reboot_required.stat.exists
+      changed_when: true
 
     # -------------------------------------------------------------------------
     # Prerequisites & Repositories
