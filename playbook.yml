@@ -362,7 +362,7 @@
         group: "{{ app_group }}"
         mode: "0600"
         content: |
-          GIS_DATABASE_URL="postgresql://{{ postgres_user }}:{{ posgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
+          GIS_DATABASE_URL="postgresql://{{ postgres_user }}:{{ postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
 
     - name: Render FastAPI .env
       ansible.builtin.copy:
@@ -372,7 +372,7 @@
         mode: "0640"
         content: |
           APP_ENV=production
-          GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{ posgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
+          GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{ postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
           SOURCES_SYNC_TOKEN={{ sync_token }}
           LARAVEL_BASE_URL={{ app_url }}
 
