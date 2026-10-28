@@ -188,6 +188,26 @@
     # -------------------------------------------------------------------------
     # 1. Repository Checkout & Directory Structure
     # -------------------------------------------------------------------------
+    - name: Check if directory is already an initialized git repository
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/.git"
+      register: git_repo_check
+
+    - name: Find all items inside /srv/graft if not a valid git repo
+      ansible.builtin.find:
+        paths: "{{ app_dir }}"
+        file_type: any
+        hidden: true
+      register: directory_contents
+      when: not git_repo_check.stat.exists
+
+    - name: Remove all existing contents inside /srv/graft
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ directory_contents.files }}"
+      when: not git_repo_check.stat.exists
+
     - name: Clone GraftGIS repository
       ansible.builtin.git:
         repo: "git@github.com:Fossphorus2016/ground-truth.git"
@@ -195,7 +215,7 @@
         version: "main"
         accept_hostkey: true
         key_file: /home/ubuntu/.ssh/id_ed25519
-        force: yes
+        force: "true"
 
     - name: Ensure runtime storage and log directories exist
       ansible.builtin.file:
@@ -317,7 +337,7 @@
           DB_PASSWORD={{ mysql_pass }}
           FASTAPI_BASE_URL=http://{{ mysql_endpoint }}:8000
           SOURCES_SYNC_TOKEN={{ sync_token }}
-    
+
     # -------------------------------------------------------------------------
     # 4. Dependency Build & Application Key Generation
     # -------------------------------------------------------------------------
