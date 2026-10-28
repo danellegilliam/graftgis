@@ -52,6 +52,10 @@
           - python3-pip
           - postgresql-client
           - mariadb-client
+          - build-essential
+          - python3-dev
+          - libgdal-dev
+          - gdal-bin
         state: present
         update_cache: true
 
@@ -304,7 +308,16 @@
         chdir: "{{ app_dir }}"
         creates: "{{ app_dir }}/.venv-loader/bin/activate"
       become: true
-      become_user: "{{ app_user }}"
+    
+    - name: Ensure /srv/graft directory exists with correct deploy ownership
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        recurse: true
+      become: true
+      
 
     - name: Set up FastAPI virtual environment
       ansible.builtin.command:
