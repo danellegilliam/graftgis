@@ -195,8 +195,6 @@
         version: "main"
         accept_hostkey: true
         key_file: /home/ubuntu/.ssh/id_ed25519
-      become: true
-      become_user: "{{ app_user }}"
 
     - name: Ensure runtime storage and log directories exist
       ansible.builtin.file:
