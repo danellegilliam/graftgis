@@ -409,8 +409,20 @@
       become_user: "{{ app_user }}"
 
     - name: Install NPM dependencies and build frontend assets
-      ansible.builtin.shell: "npm ci && npm run build"
+      ansible.builtin.shell: "npm ci"
       args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+    
+    - name: Ensure tailwindcss package is installed
+      ansible.builtin.command:
+        cmd: npm install --save-dev tailwindcss @tailwindcss/vite
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+
+    - name: Build frontend production assets with Vite
+      ansible.builtin.command:
+        cmd: npm run build
         chdir: "{{ app_dir }}"
       become_user: "{{ app_user }}"
 
