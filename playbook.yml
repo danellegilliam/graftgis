@@ -228,6 +228,30 @@
       loop: "{{ directory_contents.files }}"
       when: not git_repo_check.stat.exists
 
+    - name: Ensure /srv/graft directory exists with correct deploy ownership
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0775"
+        recurse: true
+
+    - name: Configure Git safe.directory globally for deploy user
+      community.general.git_config:
+        name: safe.directory
+        value: "{{ app_dir }}"
+        scope: global
+        state: present
+      become_user: deploy
+
+    - name: Configure Git safe.directory system-wide
+      community.general.git_config:
+        name: safe.directory
+        value: "{{ app_dir }}"
+        scope: system
+        state: present
+
     - name: Clone GraftGIS repository
       ansible.builtin.git:
         repo: "git@github.com:Fossphorus2016/ground-truth.git"
