@@ -127,8 +127,8 @@
       ansible.builtin.shell: |
         mysql -u root <<EOF
         CREATE DATABASE IF NOT EXISTS graft CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        CREATE USER IF NOT EXISTS '{{ mysql_user }}'@'{{ msyql_endpoint }}' IDENTIFIED BY '{{ mysql_pass }}';
-        GRANT ALL PRIVILEGES ON graft.* TO '{{ mysql_user }}'@'{{ msyql_endpoint }}';
+        CREATE USER IF NOT EXISTS '{{ mysql_user }}'@'{{ mysql_endpoint }}' IDENTIFIED BY '{{ mysql_pass }}';
+        GRANT ALL PRIVILEGES ON graft.* TO '{{ mysql_user }}'@'{{ mysql_endpoint }}';
         FLUSH PRIVILEGES;
         EOF
       changed_when: false
@@ -310,12 +310,12 @@
           APP_DEBUG=false
           APP_URL={{ app_url }}
           DB_CONNECTION=mysql
-          DB_HOST={{ msyql_endpoint }}
+          DB_HOST={{ mysql_endpoint }}
           DB_PORT=3306
-          DB_DATABASE={{ msyql_db_name }}
+          DB_DATABASE={{ mysql_db_name }}
           DB_USERNAME={{ mysql_user }}
           DB_PASSWORD={{ mysql_pass }}
-          FASTAPI_BASE_URL=http://{{ msyql_endpoint }}:8000
+          FASTAPI_BASE_URL=http://{{ mysql_endpoint }}:8000
           SOURCES_SYNC_TOKEN={{ sync_token }}
     
     # -------------------------------------------------------------------------
@@ -386,7 +386,7 @@
 
     - name: Verify FastAPI health endpoint
       ansible.builtin.uri:
-        url: "http://{{ msyql_endpoint }}:8000/health"
+        url: "http://{{ mysql_endpoint }}:8000/health"
         status_code: 200
         return_content: true
       register: health_check
