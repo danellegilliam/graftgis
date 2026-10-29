@@ -356,28 +356,22 @@
         dest: "{{ app_dir }}/scripts/server/gt.env"
         owner: "{{ app_user }}"
         group: "{{ app_group }}"
-        mode: "0600"
+        mode: "0644"
         content: |
           GIS_DATABASE_URL="postgresql://{{ postgres_user }}:{{  postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
 
     - name: Render FastAPI .env
-      ansible.builtin.copy:
+      ansible.builtin.template:
+        src: templates/fastapi-env.j2
         dest: "{{ app_dir }}/services/fastapi/.env"
-        owner: "{{ app_user }}"
-        group: "{{ app_group }}"
-        mode: "0640"
-        content: |
-          APP_ENV=production
-          GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{  postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
-          SOURCES_SYNC_TOKEN={{ sync_token }}
-          LARAVEL_BASE_URL={{ app_url }}
+        mode: "0644"
 
     - name: Render Laravel .env
       ansible.builtin.copy:
         dest: "{{ app_dir }}/.env"
         owner: "{{ app_user }}"
         group: "{{ app_group }}"
-        mode: "0640"
+        mode: "0644"
         content: |
           APP_NAME=GroundTruth
           APP_ENV=production
@@ -463,6 +457,7 @@
     - name: Reload systemd daemon
       ansible.builtin.systemd:
         daemon_reload: true
+      become: true
 
     - name: Enable and start systemd services
       ansible.builtin.systemd:
@@ -472,6 +467,7 @@
       loop:
         - graft-fastapi.service
         - graft-queue.service
+      become: true
 
     - name: Verify FastAPI health endpoint
       ansible.builtin.uri:
