@@ -1,0 +1,5 @@
+SCORING_WEIGHTS_JSON='{{ scoring_weights_json }}'
+APP_ENV={{ app_env }}
+GIS_DATABASE_URL=postgresql://{{ postgres_user }}:{{  postgres_pass }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require
+SOURCES_SYNC_TOKEN={{ sync_token }}
+LARAVEL_BASE_URL={{ app_url }}
