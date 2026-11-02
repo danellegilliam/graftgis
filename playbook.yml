@@ -368,7 +368,7 @@
 
     - name: Render Laravel .env
       ansible.builtin.template:
-        src: "template/laravel-env.j2"
+        src: templates/laravel-env.j2
         dest: "{{ app_dir }}.env"
         mode: 0644
         owner: "{{ app_user }}"
