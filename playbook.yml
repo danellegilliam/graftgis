@@ -368,8 +368,8 @@
 
     - name: Render Laravel .env
       ansible.builtin.template:
-        src: templates/laravel-env.j2
-        dest: "{{ app_dir }}.env"
+        src: template/laravel-env.j2
+        dest: "{{ app_dir }}/.env"
         mode: 0644
         owner: "{{ app_user }}"
         group: "{{ app_group }}"
@@ -422,16 +422,16 @@
       environment:
         GIS_DATABASE_URL: "postgresql://{{ postgres_user }}:{{ postgres_pass | urlencode }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
 
-    - name: Grant read-only access to gt_readonly role for ArcGIS Pro
-      ansible.builtin.shell: |
-        set -a; . /srv/graft/scripts/server/gt.env; set +a
-        psql "$GIS_DATABASE_URL" -c '
-          GRANT USAGE ON SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema TO gt_readonly;
-          GRANT SELECT ON ALL TABLES IN SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema TO gt_readonly;
-          ALTER DEFAULT PRIVILEGES IN SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema GRANT SELECT ON TABLES TO gt_readonly;
-        '
-      become_user: "{{ app_user }}"
-      ignore_errors: true
+    # - name: Grant read-only access to gt_readonly role for ArcGIS Pro
+    #   ansible.builtin.shell: |
+    #     set -a; . /srv/graft/scripts/server/gt.env; set +a
+    #     psql "$GIS_DATABASE_URL" -c '
+    #       GRANT USAGE ON SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema TO gt_readonly;
+    #       GRANT SELECT ON ALL TABLES IN SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema TO gt_readonly;
+    #       ALTER DEFAULT PRIVILEGES IN SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema GRANT SELECT ON TABLES TO gt_readonly;
+    #     '
+    #   become_user: "{{ app_user }}"
+    #   ignore_errors: true
 
     - name: Run Laravel database migrations against local MariaDB
       ansible.builtin.shell: |
