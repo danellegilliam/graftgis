@@ -367,25 +367,12 @@
         mode: "0644"
 
     - name: Render Laravel .env
-      ansible.builtin.copy:
-        dest: "{{ app_dir }}/.env"
+      ansible.builtin.template:
+        src: "template/laravel-env.j2"
+        dest: "{{ app_dir }}.env"
+        mode: 0644
         owner: "{{ app_user }}"
         group: "{{ app_group }}"
-        mode: "0644"
-        content: |
-          APP_NAME=GroundTruth
-          APP_ENV=production
-          APP_KEY=
-          APP_DEBUG=false
-          APP_URL={{ app_url }}
-          DB_CONNECTION=mysql
-          DB_HOST={{ mysql_endpoint }}
-          DB_PORT=3306
-          DB_DATABASE={{ mysql_db_name }}
-          DB_USERNAME={{ mysql_user }}
-          DB_PASSWORD={{ mysql_pass }}
-          FASTAPI_BASE_URL=http://{{ mysql_endpoint }}:8000
-          SOURCES_SYNC_TOKEN={{ sync_token }}
 
     # -------------------------------------------------------------------------
     # 4. Dependency Build & Application Key Generation
@@ -432,6 +419,19 @@
       args:
         chdir: "{{ app_dir }}/gis"
       become_user: "{{ app_user }}"
+      environment:
+        GIS_DATABASE_URL: "postgresql://{{ postgres_user }}:{{ postgres_pass | urlencode }}@{{ postgres_endpoint }}:5432/{{ postgres_db_name }}?sslmode=require"
+
+    - name: Grant read-only access to gt_readonly role for ArcGIS Pro
+      ansible.builtin.shell: |
+        set -a; . /srv/graft/scripts/server/gt.env; set +a
+        psql "$GIS_DATABASE_URL" -c '
+          GRANT USAGE ON SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema TO gt_readonly;
+          GRANT SELECT ON ALL TABLES IN SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema TO gt_readonly;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA "FD_HOUSTON", epa, usgs, noaa, fema GRANT SELECT ON TABLES TO gt_readonly;
+        '
+      become_user: "{{ app_user }}"
+      ignore_errors: true
 
     - name: Run Laravel database migrations against local MariaDB
       ansible.builtin.shell: |
@@ -440,6 +440,16 @@
       args:
         chdir: "{{ app_dir }}"
       become_user: "{{ app_user }}"
+    
+    - name: Seed permissions and scoring configuration
+      ansible.builtin.shell: "php artisan db:seed --class={{ item }} --force"
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+      loop:
+        - PermissionSeeder
+        - RolePermissionSeeder
+        - ScoringConfigSeeder
 
     # -------------------------------------------------------------------------
     # 6. Service Management & Verification
@@ -478,3 +488,96 @@
       retries: 5
       delay: 3
       until: health_check.status == 200
+  
+    # -------------------------------------------------------------------------
+    # 7. Nginx Web Routing (Runbook Step 10.6)
+    # -------------------------------------------------------------------------
+    - name: Configure Nginx virtual host for GraftGIS
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/graft
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          server {
+              listen 80;
+              server_name {{ app_domain | default('graftgis.com') }} www.{{ app_domain | default('graftgis.com') }};
+              root {{ app_dir }}/public;
+              index index.php;
+              client_max_body_size 50m;
+
+              location / {
+                  try_files $uri $uri/ /index.php?$query_string;
+              }
+
+              location ~ \.php$ {
+                  include fastcgi_params;
+                  fastcgi_pass unix:/run/php/php{{ php_version }}-fpm.sock;
+                  fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+                  fastcgi_param DOCUMENT_ROOT $realpath_root;
+                  fastcgi_read_timeout 120s;
+              }
+
+              location ~ /\.(?!well-known).* {
+                  deny all;
+              }
+          }
+
+    - name: Enable GraftGIS Nginx site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/graft
+        dest: /etc/nginx/sites-enabled/graft
+        state: link
+
+    - name: Remove default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Test and restart Nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+    
+    # -------------------------------------------------------------------------
+    # 8. Laravel Production Caches & Crontab (Runbook Steps 10.4 & 10.8)
+    # -------------------------------------------------------------------------
+    - name: Warm Laravel production caches
+      ansible.builtin.shell: |
+        php artisan config:cache
+        php artisan route:cache
+        php artisan view:cache
+        php artisan event:cache
+      args:
+        chdir: "{{ app_dir }}"
+      become_user: "{{ app_user }}"
+
+    - name: Install scheduler crontab for deploy user
+      ansible.builtin.cron:
+        name: "Laravel Scheduler"
+        user: "{{ app_user }}"
+        minute: "*"
+        job: "cd {{ app_dir }} && /usr/bin/php artisan schedule:run >> /dev/null 2>&1"
+    
+    # -------------------------------------------------------------------------
+    # 9. Verification Probes (Runbook Step 14)
+    # -------------------------------------------------------------------------
+    - name: Verify FastAPI internal health endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8000/health"
+        status_code: 200
+        return_content: true
+      register: health_check
+      retries: 5
+      delay: 3
+      until: health_check.status == 200
+
+    - name: Verify local Nginx HTTP response
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/"
+        headers:
+          Host: "{{ app_domain | default('graftgis.com') }}"
+        status_code:
+          - 200
+          - 301
+          - 302
